@@ -11,7 +11,7 @@ st.set_page_config(page_title="方舟 v17.3 全球通", layout="wide")
 style_css = """
 <style>
     .ark-container { max-width: 100%; margin: 0 auto; font-family: 'Microsoft JhengHei', sans-serif; }
-    .ark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 15px; }
+    .ark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
     .ark-card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; justify-content: space-between; }
     
     .card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;}
@@ -57,7 +57,7 @@ style_css = """
 st.markdown(style_css, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心運算 (移植自原始碼 v17.3)
+# 2. 核心運算
 # ==========================================
 
 STOCK_MAP = {
@@ -85,12 +85,12 @@ def get_symbol_and_currency(ticker):
     ticker = ticker.strip().upper()
     if ticker.endswith('.TW') or ticker.endswith('.TWO'):
         return ticker, 'TWD'
-    # 判斷邏輯修正：檢查第一個字元是否為數字
+    # 修正判斷邏輯：只要開頭是數字，一律視為台股
     if len(ticker) > 0 and ticker[0].isdigit():
         return ticker + '.TW', 'TWD'
     return ticker, 'USD'
 
-@st.cache_data(ttl=3600) # 加入快取避免重複抓取
+@st.cache_data(ttl=3600)
 def get_usdtwd_rate():
     try:
         rate_df = yf.Ticker("USDTWD=X").history(period="1d")
@@ -196,7 +196,6 @@ def run_analysis_v17(rows, total_budget, mode_days, strat_mode):
         sym, currency = get_symbol_and_currency(tk)
         
         try:
-            # 轉換數值，若為 None 或空字串則設為 0
             div = float(row['股利']) if row['股利'] else 0
             eps = float(row['EPS']) if row['EPS'] else 0
             cost = float(row['成本']) if row['成本'] else 0
@@ -221,182 +220,4 @@ def run_analysis_v17(rows, total_budget, mode_days, strat_mode):
                 
             df['MA10'] = df['Close'].rolling(window=10).mean()
             df['MA20'] = df['Close'].rolling(window=20).mean()
-            ma10 = df['MA10'].iloc[-1] if not pd.isna(df['MA10'].iloc[-1]) else price
-            ma20 = df['MA20'].iloc[-1] if not pd.isna(df['MA20'].iloc[-1]) else price
-            
-            ma20_prev = df['MA20'].iloc[-2] if not pd.isna(df['MA20'].iloc[-2]) else price
-            ma20_up = ma20 > ma20_prev
-            
-            bias = ((price - ma20)/ma20)*100
-            
-            prof_pct = None
-            hold_txt = "✨新倉"
-            hold_bg, hold_font = "#ecf0f1", "#7f8c8d"
-            if cost > 0:
-                prof_pct = ((price - cost)/cost)*100
-                if prof_pct > 0: hold_txt, hold_bg, hold_font = f"🔴賺{prof_pct:.0f}%", "#fadbd8", "#c0392b"
-                else: hold_txt, hold_bg, hold_font = f"🟢賠{abs(prof_pct):.0f}%", "#d5f5e3", "#1e8449"
-                
-            yr = (div/price)*100 if div>0 else 0
-            pe = price/eps if eps>0 else 0
-            yr_str = f"{yr:.1f}%" if div>0 else "-"
-            pe_str = f"{pe:.1f}" if eps>0 else "-"
-            
-            df['RSI'] = calculate_rsi(df['Close'])
-            rsi = df['RSI'].iloc[-1]
-            k_list, d_list = calculate_kd(df)
-            k_val, d_val = k_list[-1], d_list[-1]
-            vol_now = df['Volume'].iloc[-1]
-            vol_ma5 = df['Volume'].rolling(5).mean().iloc[-1]
-            vol_ratio = (vol_now / vol_ma5) if vol_ma5 > 0 else 1.0
-            df['MACD_OSC'] = calculate_macd(df)
-            macd_osc = df['MACD_OSC'].iloc[-1]
-            df['Pct_B'] = calculate_bollinger_b(df)
-            pct_b = df['Pct_B'].iloc[-1]
-            
-            is_val = False
-            if (div>0 and yr>4.5) or (eps>0 and 0<pe<18) or rsi < 40: is_val=True
-            is_overheated = (bias > 10) or (rsi > 75)
-            is_weak = price < ma10
-            sell_signal = is_overheated and is_weak
-            
-            trend = check_trend(df)
-            rec_money, rec_reason, strat_color = get_strategy(budget_per_stock, mode_days, bias, trend, is_val, prof_pct, strat_mode, sell_signal)
-            stock_name = get_stock_name(tk)
-            
-            cards.append({
-                "ticker": tk, "stock_name": stock_name, "price_display": price_display,
-                "price_twd": price_twd_approx,
-                "bias": bias, "trend": trend,
-                "yr_str": yr_str, "pe_str": pe_str,
-                "rsi": rsi, "k_val": k_val, "d_val": d_val, "vol_ratio": vol_ratio,
-                "macd_osc": macd_osc, "pct_b": pct_b,
-                "ma20": ma20, "ma20_up": ma20_up,
-                "hold_txt": hold_txt, "hold_bg": hold_bg, "hold_font": hold_font,
-                "money": rec_money, "reason": rec_reason, "color": strat_color
-            })
-        except Exception as e:
-            st.error(f"Error {tk}: {e}")
-            pass
-            
-    return cards, usd_rate
-
-# ==========================================
-# 3. UI 介面 (Streamlit 版)
-# ==========================================
-
-st.title("🚢 方舟 v17.3 全球通 (Streamlit版)")
-st.caption("修正 00675L 判讀 | 大字體面板 | 網頁即時版")
-
-# 控制列
-col1, col2, col3 = st.columns([2, 2, 2])
-with col1:
-    total_budget = st.number_input("💰 總閒錢 (NT)", value=50000, step=1000)
-with col2:
-    mode_option = st.selectbox("📅 投資週期", options=[20, 60, 240], format_func=lambda x: {20: '🔥月 (20日)', 60: '⚖️季 (60日)', 240: '🐢年 (240日)'}[x])
-with col3:
-    strat_mode = st.selectbox("🧠 策略模式", options=['ark', 'trend'], format_func=lambda x: {'ark': '💎 方舟左側', 'trend': '🚀 趨勢右側'}[x])
-
-st.markdown("---")
-st.subheader("📋 股票清單")
-
-# 使用 Data Editor 替代原本的文字框輸入，更方便操作
-default_data = pd.DataFrame([
-    {"代號": "2330", "股利": 24.0, "EPS": 72.0, "成本": 770.0},
-    {"代號": "00675L", "股利": 0.0, "EPS": 0.0, "成本": 95.0},
-    {"代號": "00878", "股利": 1.6, "EPS": 0.0, "成本": 19.0},
-    {"代號": "VOO", "股利": 0.0, "EPS": 0.0, "成本": 0.0},
-    {"代號": "", "股利": 0.0, "EPS": 0.0, "成本": 0.0}
-])
-
-edited_df = st.data_editor(
-    default_data, 
-    num_rows="dynamic", 
-    use_container_width=True,
-    column_config={
-        "代號": st.column_config.TextColumn("代號 (台股/美股)", help="輸入代號，如 2330 或 VOO"),
-        "股利": st.column_config.NumberColumn("股利 (原幣)", min_value=0.0, format="%.2f"),
-        "EPS": st.column_config.NumberColumn("EPS (原幣)", min_value=0.0, format="%.2f"),
-        "成本": st.column_config.NumberColumn("成本 (原幣)", min_value=0.0, format="%.2f"),
-    }
-)
-
-run_btn = st.button("執行分析 (GO)", type="primary", use_container_width=True)
-
-if run_btn:
-    # 將 DataFrame 轉回原本邏輯需要的 list 格式
-    rows_input = edited_df.to_dict('records')
-    
-    with st.spinner('⏳ 計算中 (同步抓取匯率)...'):
-        cards, usd_rate = run_analysis_v17(rows_input, total_budget, mode_option, strat_mode)
-    
-    if cards:
-        st.success(f"ℹ️ 目前美金匯率: {usd_rate:.2f} (美股價格已自動換算)")
-        
-        # 組合 HTML
-        html_content = "<div class='ark-container'><div class='ark-grid'>"
-        for c in cards:
-            trend_bg = "#d6eaf8" if "多" in c['trend'] else "#fadbd8" if "空" in c['trend'] else "#ecf0f1"
-            kd_col = "#c0392b" if c['k_val'] > c['d_val'] else "#27ae60"
-            vol_col = "#d35400" if c['vol_ratio'] > 1.5 else "#2c3e50"
-            macd_col = "#c0392b" if c['macd_osc'] > 0 else "#27ae60"
-            macd_txt = f"{c['macd_osc']:.1f}"
-            pct_b_val = c['pct_b']
-            bb_col = "#c0392b" if pct_b_val > 100 else "#27ae60" if pct_b_val < 0 else "#2c3e50"
-            ma20_col = "#c0392b" if c['ma20_up'] else "#27ae60"
-            ma20_arrow = "⤴️" if c['ma20_up'] else "⤵️"
-
-            twd_hint = ""
-            if "US$" in c['price_display']:
-                twd_hint = f"<span class='price-twd-hint'>≈NT$ {c['price_twd']:,.0f}</span>"
-
-            if c['money'] == -999:
-                money_txt = "🚨賣出"
-                money_col = "#c0392b"
-                action_class = "action-box sell-box"
-                label_txt = "訊號觸發"
-            else:
-                money_txt = f"${c['money']:,}" if c['money'] > 0 else "---"
-                money_col = c['color'] if c['money'] > 0 else "#bdc3c7"
-                action_class = "action-box"
-                label_txt = "建議投入(NT)"
-
-            html_content += f"""
-            <div class='ark-card' style='border-top: 6px solid {c['color']}'>
-                <div class='card-top'>
-                    <div class='ticker-box'>
-                        <span class='ticker'>{c['ticker']}</span>
-                        <span class='stock-name'>{c['stock_name']}</span>
-                    </div>
-                    <div style='display:flex; flex-direction:column; align-items:flex-end;'>
-                        <span class='price'>{c['price_display']}</span>
-                        {twd_hint}
-                    </div>
-                </div>
-
-                <div class='data-grid'>
-                    <div class='data-item-box'><span class='data-lbl'>KD</span><span class='data-num' style='color:{kd_col}'>{c['k_val']:.0f}</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>量比</span><span class='data-num' style='color:{vol_col}'>{c['vol_ratio']:.1f}x</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>RSI</span><span class='data-num'>{c['rsi']:.0f}</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>MACD</span><span class='data-num' style='color:{macd_col}'>{macd_txt}</span></div>
-
-                    <div class='data-item-box'><span class='data-lbl'>MA20</span><span class='data-num'>{c['ma20']:.0f}</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>趨勢</span><span class='data-num' style='color:{ma20_col}'>{ma20_arrow}</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>布林</span><span class='data-num' style='color:{bb_col}'>{pct_b_val:.0f}%</span></div>
-                    <div class='data-item-box'><span class='data-lbl'>殖利率</span><span class='data-num'>{c['yr_str']}</span></div>
-                </div>
-
-                <div class='tags-row'>
-                    <span class='tag' style='background:{trend_bg}; color:#2c3e50'>{c['trend']}</span>
-                    <span class='tag' style='background:{c['hold_bg']}; color:{c['hold_font']}'>{c['hold_txt']}</span>
-                </div>
-                <div class='reason-box'><span class='reason-text' style='color:{c['color']}'>{c['reason']}</span></div>
-                <div class='{action_class}'><span class='label'>{label_txt}</span><br><span class='money' style='color:{money_col}'>{money_txt}</span></div>
-            </div>
-            """
-        html_content += "</div></div>"
-        
-        # 顯示結果
-        st.markdown(html_content, unsafe_allow_html=True)
-    else:
-        st.warning("沒有有效的股票代號，請檢查輸入清單。")
+            ma10 = df['MA10'].iloc[-1] if
