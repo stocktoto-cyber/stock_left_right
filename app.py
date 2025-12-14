@@ -25,7 +25,7 @@ def load_css():
             display: flex; 
             flex-direction: column; 
             justify-content: space-between; 
-            margin-bottom: 10px; /* 避免卡片黏在一起 */
+            margin-bottom: 10px;
         }
         
         .card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;}
@@ -293,9 +293,10 @@ def run_analysis_v17(rows, total_budget, mode_days, strat_mode):
     return cards, usd_rate
 
 # ==========================================
-# 4. HTML 生成器 (獨立函數，確保格式正確)
+# 4. HTML 生成器 (修正縮排問題)
 # ==========================================
 def generate_html_report(cards):
+    # 這裡將 html_out 拼接為一行，避免縮排導致被判讀為 Code Block
     html_out = "<div class='ark-container'><div class='ark-grid'>"
     
     for c in cards:
@@ -324,40 +325,10 @@ def generate_html_report(cards):
             action_class = "action-box"
             label_txt = "建議投入(NT)"
 
-        # 使用 f-string 生成單張卡片 HTML
-        card_html = f"""
-        <div class='ark-card' style='border-top: 6px solid {c['color']}'>
-            <div class='card-top'>
-                <div class='ticker-box'>
-                    <span class='ticker'>{c['ticker']}</span>
-                    <span class='stock-name'>{c['stock_name']}</span>
-                </div>
-                <div style='display:flex; flex-direction:column; align-items:flex-end;'>
-                    <span class='price'>{c['price_display']}</span>
-                    {twd_hint}
-                </div>
-            </div>
-
-            <div class='data-grid'>
-                <div class='data-item-box'><span class='data-lbl'>KD</span><span class='data-num' style='color:{kd_col}'>{c['k_val']:.0f}</span></div>
-                <div class='data-item-box'><span class='data-lbl'>量比</span><span class='data-num' style='color:{vol_col}'>{c['vol_ratio']:.1f}x</span></div>
-                <div class='data-item-box'><span class='data-lbl'>RSI</span><span class='data-num'>{c['rsi']:.0f}</span></div>
-                <div class='data-item-box'><span class='data-lbl'>MACD</span><span class='data-num' style='color:{macd_col}'>{macd_txt}</span></div>
-
-                <div class='data-item-box'><span class='data-lbl'>MA20</span><span class='data-num'>{c['ma20']:.0f}</span></div>
-                <div class='data-item-box'><span class='data-lbl'>趨勢</span><span class='data-num' style='color:{ma20_col}'>{ma20_arrow}</span></div>
-                <div class='data-item-box'><span class='data-lbl'>布林</span><span class='data-num' style='color:{bb_col}'>{pct_b_val:.0f}%</span></div>
-                <div class='data-item-box'><span class='data-lbl'>殖利率</span><span class='data-num'>{c['yr_str']}</span></div>
-            </div>
-
-            <div class='tags-row'>
-                <span class='tag' style='background:{trend_bg}; color:#2c3e50'>{c['trend']}</span>
-                <span class='tag' style='background:{c['hold_bg']}; color:{c['hold_font']}'>{c['hold_txt']}</span>
-            </div>
-            <div class='reason-box'><span class='reason-text' style='color:{c['color']}'>{c['reason']}</span></div>
-            <div class='{action_class}'><span class='label'>{label_txt}</span><br><span class='money' style='color:{money_col}'>{money_txt}</span></div>
-        </div>
-        """
+        # 這裡移除了 f-string 前面的所有縮排 (空白)
+        # 確保 Streamlit 不會將其識別為代碼塊
+        card_html = f"""<div class='ark-card' style='border-top: 6px solid {c['color']}'><div class='card-top'><div class='ticker-box'><span class='ticker'>{c['ticker']}</span><span class='stock-name'>{c['stock_name']}</span></div><div style='display:flex; flex-direction:column; align-items:flex-end;'><span class='price'>{c['price_display']}</span>{twd_hint}</div></div><div class='data-grid'><div class='data-item-box'><span class='data-lbl'>KD</span><span class='data-num' style='color:{kd_col}'>{c['k_val']:.0f}</span></div><div class='data-item-box'><span class='data-lbl'>量比</span><span class='data-num' style='color:{vol_col}'>{c['vol_ratio']:.1f}x</span></div><div class='data-item-box'><span class='data-lbl'>RSI</span><span class='data-num'>{c['rsi']:.0f}</span></div><div class='data-item-box'><span class='data-lbl'>MACD</span><span class='data-num' style='color:{macd_col}'>{macd_txt}</span></div><div class='data-item-box'><span class='data-lbl'>MA20</span><span class='data-num'>{c['ma20']:.0f}</span></div><div class='data-item-box'><span class='data-lbl'>趨勢</span><span class='data-num' style='color:{ma20_col}'>{ma20_arrow}</span></div><div class='data-item-box'><span class='data-lbl'>布林</span><span class='data-num' style='color:{bb_col}'>{pct_b_val:.0f}%</span></div><div class='data-item-box'><span class='data-lbl'>殖利率</span><span class='data-num'>{c['yr_str']}</span></div></div><div class='tags-row'><span class='tag' style='background:{trend_bg}; color:#2c3e50'>{c['trend']}</span><span class='tag' style='background:{c['hold_bg']}; color:{c['hold_font']}'>{c['hold_txt']}</span></div><div class='reason-box'><span class='reason-text' style='color:{c['color']}'>{c['reason']}</span></div><div class='{action_class}'><span class='label'>{label_txt}</span><br><span class='money' style='color:{money_col}'>{money_txt}</span></div></div>"""
+        
         html_out += card_html
         
     html_out += "</div></div>"
@@ -411,11 +382,7 @@ if run_btn:
     
     if cards:
         st.success(f"ℹ️ 目前美金匯率: {usd_rate:.2f} (美股價格已自動換算)")
-        
-        # 呼叫 HTML 生成函數
         final_html = generate_html_report(cards)
-        
-        # 關鍵：這裡必須使用 unsafe_allow_html=True
         st.markdown(final_html, unsafe_allow_html=True)
     else:
         st.warning("沒有有效的股票代號，請檢查輸入清單。")
