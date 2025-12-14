@@ -4,14 +4,17 @@ import pandas as pd
 import numpy as np
 
 # ==========================================
-# 1. 頁面設定與 CSS
+# 1. 頁面設定 (必須在最前面)
 # ==========================================
 st.set_page_config(page_title="方舟 v17.3 全球通", layout="wide")
 
+# ==========================================
+# 2. CSS 樣式 (確保全域載入)
+# ==========================================
 style_css = """
 <style>
     .ark-container { max-width: 100%; margin: 0 auto; font-family: 'Microsoft JhengHei', sans-serif; }
-    .ark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+    .ark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
     .ark-card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; justify-content: space-between; }
     
     .card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;}
@@ -54,10 +57,11 @@ style_css = """
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
 </style>
 """
+# 注入 CSS
 st.markdown(style_css, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 核心運算
+# 3. 核心運算邏輯
 # ==========================================
 
 STOCK_MAP = {
@@ -85,7 +89,7 @@ def get_symbol_and_currency(ticker):
     ticker = ticker.strip().upper()
     if ticker.endswith('.TW') or ticker.endswith('.TWO'):
         return ticker, 'TWD'
-    # 修正判斷邏輯：只要開頭是數字，一律視為台股
+    # 只要開頭是數字，一律視為台股
     if len(ticker) > 0 and ticker[0].isdigit():
         return ticker + '.TW', 'TWD'
     return ticker, 'USD'
@@ -281,7 +285,7 @@ def run_analysis_v17(rows, total_budget, mode_days, strat_mode):
     return cards, usd_rate
 
 # ==========================================
-# 3. UI 介面
+# 4. UI 介面
 # ==========================================
 
 st.title("🚢 方舟 v17.3 全球通 (Streamlit版)")
@@ -330,8 +334,10 @@ if run_btn:
     if cards:
         st.success(f"ℹ️ 目前美金匯率: {usd_rate:.2f} (美股價格已自動換算)")
         
-        # 組合 HTML
-        html_content = "<div class='ark-container'><div class='ark-grid'>"
+        # 建立 HTML 內容清單
+        html_parts = []
+        html_parts.append("<div class='ark-container'><div class='ark-grid'>")
+        
         for c in cards:
             trend_bg = "#d6eaf8" if "多" in c['trend'] else "#fadbd8" if "空" in c['trend'] else "#ecf0f1"
             kd_col = "#c0392b" if c['k_val'] > c['d_val'] else "#27ae60"
@@ -358,7 +364,7 @@ if run_btn:
                 action_class = "action-box"
                 label_txt = "建議投入(NT)"
 
-            html_content += f"""
+            card_html = f"""
             <div class='ark-card' style='border-top: 6px solid {c['color']}'>
                 <div class='card-top'>
                     <div class='ticker-box'>
@@ -391,9 +397,18 @@ if run_btn:
                 <div class='{action_class}'><span class='label'>{label_txt}</span><br><span class='money' style='color:{money_col}'>{money_txt}</span></div>
             </div>
             """
-        html_content += "</div></div>"
+            html_parts.append(card_html)
+            
+        html_parts.append("</div></div>")
         
-        # 關鍵修正：允許渲染 HTML
-        st.markdown(html_content, unsafe_allow_html=True)
+        # 最終渲染：將所有 HTML 片段合併為一個字串
+        full_html = "".join(html_parts)
+        
+        # =========================================================
+        # 這裡是最重要的一行！
+        # unsafe_allow_html=True 必須設為 True 才能顯示卡片
+        # =========================================================
+        st.markdown(full_html, unsafe_allow_html=True)
+        
     else:
         st.warning("沒有有效的股票代號，請檢查輸入清單。")
